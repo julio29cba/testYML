@@ -1,0 +1,172 @@
+version: '3.4'
+services:
+  redis:
+    container_name: esco-caching
+    image: redis
+    ports:
+      - 6378:6379
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+  rabbit:
+    image: rabbitmq:3.11.6-management-alpine
+    hostname: rabbit
+    environment:
+       - RABBITMQ_ERLANG_COOKIE="SWQOKODSQALRPCLNMEQG"
+       - RABBITMQ_DEFAULT_USER=admin
+       - RABBITMQ_DEFAULT_PASS=admin
+    ports:
+       - "15672:15672"
+       - "5672:5672"
+  esco.api.admin.api:
+    image: artifacts.primary.com.ar/docker/grupomtr/vb_admin:12.1.0
+    ports:
+      - "6001:80"
+    volumes:
+      - /tmp/:/app/logs
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - ADMINDB_CONNECTIONSTRING=Data Source=172.23.169.102,1433;Initial Catalog=VBHomeNGAdmin;Trusted_Connection=false;user id=UsuarioEscoApi;pwd=1234567;Connect Timeout=30000;
+      - ADMINUSERDB=servicio-vbhome
+      - ASPNETCORE_ENVIRONMENT=prod
+      - USELK=false
+      - ELASTICKURL=http://10.18.1.20:9200/
+      - CONNECTIONSTRINGENCRYPTED=false
+  esco.api.servicelayer.bolsa.api:
+    image: artifacts.primary.com.ar/docker/grupomtr/vb_sl:12.1.0
+    restart: unless-stopped
+    ports:
+      - "6002:80"
+    volumes:
+      - /tmp/:/app/logs
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - ASPNETCORE_ENVIRONMENT=prod
+      - VBDB_CONNECTIONSTRING=Data Source=172.23.169.102,1433;Initial Catalog=VBolsa;Trusted_Connection=false;user id=UsuarioEscoApi;pwd=1234567;Connect Timeout=30000;
+      - REDISURL=redis:6379
+      - USELK=false
+      - ELASTICKURL=http://10.18.1.20:9200/
+      - LOADCACHEONSTART=false
+      - CONNECTIONSTRINGENCRYPTED=false
+      - RESERVEDWORDS="rñol.nifwr-euihblnfqwref"
+      - INMEMORY=false
+  esco.api.front:
+    image: artifacts.primary.com.ar/docker/grupomtr/esco-api:12.1.0
+    depends_on:
+      - esco.api.servicelayer.bolsa.api
+      - esco.api.admin.api
+    ports:
+      - "6003:80"
+    volumes:
+      - /tmp/:/app/logs
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - ASPNETCORE_ENVIRONMENT=prod
+      - URLADMIN=http://esco.api.admin.api/api/v{0}/
+      - URLBOLSA=http://esco.api.servicelayer.bolsa.api/api/v{0}/
+      - URLBOLSAOMS=http://oms.bolsa.api/api/v{0}/
+      - URLFONDOS=http://10.18.1.16/api/v{0}/
+      - URLFONDOSTRANS=http://10.18.1.17/api/v{0}/
+      - URLPBIEXPORTER=http://esco.report.server:3000/api/
+      - REDISURL=redis:6379
+      - EXPURL=http://esco.report.server:3000/api/
+      - EVENTURL=rabbit
+      - PORT=5672
+      - EVENUSER=admin
+      - EVENPASS=admin
+      - USELK=false
+      - ELASTICKURL=http://10.18.1.20:9200/
+      - PUSHGATEWAYINTERVAL=300
+      - PUSHGATEWAYSERVER=http://telemetry.sistemasesco.com.ar:9091/metrics
+      - LUSERACTIVITY=false
+      - CLIENTID=BLD-TEST
+      - PLATAFORMA=VB
+      - APIMAXCONNECTIONS=500
+      - RESERVEDWORDS="rñol.nifwr-euihblnfqwref"
+      - USERSERVICE=
+      - PBISERVER=
+      - PBIUSER=
+      - PBIPASS=
+      - PBIVERSION=2.0
+  oms.bolsa.api:
+    image: artifacts.primary.com.ar/docker/grupomtr/vb_oms:12.1.0
+    ports:
+      - "6004:80"
+    volumes:
+      - /tmp/:/app/logs
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - ASPNETCORE_ENVIRONMENT=prod
+      - VBDB_CONNECTIONSTRING=Data Source=172.23.169.102,1433;Initial Catalog=VBolsa;Trusted_Connection=false;user id=UsuarioEscoApi;pwd=1234567;Connect Timeout=30000;
+      - REDISURL=redis:6379
+      - RESTTRAD=
+      - WSTRAD=
+      - TRADUSER=
+      - TRADPASS=
+      - TRADPROP=
+      - EXPURL=
+      - EVENTURL=rabbit
+      - PORT=5672
+      - EVENUSER=admin
+      - EVENPASS=admin
+      - USELK=false
+      - ELASTICKURL=http://10.18.1.20:9200/
+      - FORMAPAGO=0
+      - CONNECTIONSTRINGENCRYPTED=false
+      - RESERVEDWORDS="rñol.nifwr-euihblnfqwref"
+      - INMEMORY=false
+  dispatcher-go:
+    image: artifacts.primary.com.ar/docker/grupomtr/dispatcher-go:12.1.0
+    restart: unless-stopped
+    container_name: dispatcher-go
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - ASPNETCORE_ENVIRONMENT=prod
+      - VB_PROCESO=1
+      - VF_PROCESO=0
+      - REDISURL=redis:6379
+      - RESTTRAD=
+      - TRADUSER=
+      - TRADPASS=
+      - TRADPROP=
+      - EXPURL=http://esco.report.server/api/
+      - EVENTURL=rabbit
+      - PORT=5672
+      - EVENUSER=admin
+      - EVENPASS=admin
+      - USELK=false
+      - ELASTICKURL=http://10.18.1.20:9200/
+      - CurrentAccountChangeHandler=0/5 * * * * ?
+      - clearCacheAt2355=0 55 23 ? * * *
+      - CONNECTIONSTRINGENCRYPTED=false
+      - MarkectId=XMEV
+      - allowRoutingUsingQueue=true
+      - VBDB_CONNECTIONSTRING_SERV=172.23.169.102
+      - VBDB_CONNECTIONSTRING_PORT=1433
+      - VBDB_CONNECTIONSTRING_USER=UsuarioEscoApi
+      - VBDB_CONNECTIONSTRING_PASS=1234567
+      - VBDB_CONNECTIONSTRING_DB=VBolsa
+#  esco.telemetry.collector:
+#    image: grupomtr/client-collectors:1.0.6
+#    ports:
+#      - "6020:80"
+#    restart: unless-stopped
+#    environment:
+#      - TZ=America/Argentina/Buenos_Aires
+#      - ASPNETCORE_ENVIRONMENT=prod
+#      - RESTTRAD=http://traductor:8086/
+#      - TRADUSER=miusuario
+#      - TRADPASS=mipassword
+#      - APPNAME=VB
+#      - PROCESSFUT=true
+#      - APP_ID=BLD-TEST
+#      - CLIENT_ID=BLD-TEST
+#      - CLIENT_NAME=BLD-Test
+#      - CRON_CHECK_PASSWORD_EXPIRE_BYMA=0 0/5 10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI 2080|60000|10
+#      - CRON_TRAD_ALIVE=0 0/5 10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI 2080|60000|10
+#      - CRON_CHECK_SECURITY_LIST=0 0/5 10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI 2080|60000|10
+#      - CRON_TRAD_CONINFO=0 0/5 10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI 2080|60000|10
+#      - CRON_ESCOAPI_SYS_STATUS=0 0/30 10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI *|60000|10
+#      - CRON_CHECK_ESCOAPI_CONNECTION=0 0/5 9,10,11,12,13,14,15,16,17,18,19,20,21 ? * MON,TUE,WED,THU,FRI *|60000|10
+#      - API_SEND=http://telemetry.sistemasesco.com.ar:7003/api/
+#      - ESCOAPIURL=http://esco.api.front/api/v8/
+
